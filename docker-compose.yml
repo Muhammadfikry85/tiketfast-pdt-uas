@@ -1,0 +1,139 @@
+version: "3.9"
+
+# ============================================================
+# TiketFast - Distributed Ticket Booking Platform
+# Implementasi Docker dari SRS TiketFast v2.0
+# Fitur: Virtual Waiting Room, Distributed Seat Locking,
+#        Postgres Master-Replica (CAP: Consistency > Availability),
+#        nginx sebagai load balancer / reverse proxy
+# ============================================================
+
+services:
+
+  # ---------- Load Balancer (3.4 Communications Interfaces) ----------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: tiketfast-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app1
+      - app2
+      - app3
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+  # ---------- Application Nodes (multi-node, K8s-style di lokal) ----------
+  app1:
+    build: ./app
+    container_name: tiketfast-app1
+    environment:
+      - NODE_ID=app1
+      - REDIS_HOST=redis
+      - PG_MASTER_HOST=postgres-master
+      - PG_REPLICA_HOST=postgres-replica
+      - QUEUE_THRESHOLD=50000   # REQ-1: ambang batas 50.000 RPS (disimulasikan)
+      - LOCK_TTL_SECONDS=600    # REQ-3: TTL kunci kursi 600 detik
+    depends_on:
+      - redis
+      - postgres-master
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+  app2:
+    build: ./app
+    container_name: tiketfast-app2
+    environment:
+      - NODE_ID=app2
+      - REDIS_HOST=redis
+      - PG_MASTER_HOST=postgres-master
+      - PG_REPLICA_HOST=postgres-replica
+      - QUEUE_THRESHOLD=50000
+      - LOCK_TTL_SECONDS=600
+    depends_on:
+      - redis
+      - postgres-master
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+  app3:
+    build: ./app
+    container_name: tiketfast-app3
+    environment:
+      - NODE_ID=app3
+      - REDIS_HOST=redis
+      - PG_MASTER_HOST=postgres-master
+      - PG_REPLICA_HOST=postgres-replica
+      - QUEUE_THRESHOLD=50000
+      - LOCK_TTL_SECONDS=600
+    depends_on:
+      - redis
+      - postgres-master
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+  # ---------- Distributed Cache untuk Queue Token & Seat Locking ----------
+  redis:
+    image: redis:7.2-alpine
+    container_name: tiketfast-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+  # ---------- Database Master (write, sumber kebenaran / Consistency) ----------
+  postgres-master:
+    image: postgres:16-alpine
+    container_name: tiketfast-pg-master
+    environment:
+      - POSTGRES_USER=tiketfast
+      - POSTGRES_PASSWORD=tiketfast_pass
+      - POSTGRES_DB=tiketfast
+    volumes:
+      - ./postgres/master.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/init-master.sh:/docker-entrypoint-initdb.d/init-master.sh:ro
+      - pg-master-data:/var/lib/postgresql/data
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    ports:
+      - "5432:5432"
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+  # ---------- Database Replica (read-only, sinkronisasi streaming) ----------
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: tiketfast-pg-replica
+    environment:
+      - POSTGRES_USER=tiketfast
+      - POSTGRES_PASSWORD=tiketfast_pass
+      - POSTGRES_DB=tiketfast
+      - PGUSER=tiketfast
+    volumes:
+      - ./postgres/replica.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh:ro
+      - pg-replica-data:/var/lib/postgresql/data
+    entrypoint: ["/docker-entrypoint-initdb.d/init-replica.sh"]
+    depends_on:
+      - postgres-master
+    ports:
+      - "5433:5432"
+    networks:
+      - tiketfast-net
+    restart: unless-stopped
+
+networks:
+  tiketfast-net:
+    driver: bridge
+
+volumes:
+  pg-master-data:
+  pg-replica-data:
