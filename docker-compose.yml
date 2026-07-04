@@ -1,16 +1,7 @@
 version: "3.9"
 
-# ============================================================
-# TiketFast - Distributed Ticket Booking Platform
-# Implementasi Docker dari SRS TiketFast v2.0
-# Fitur: Virtual Waiting Room, Distributed Seat Locking,
-#        Postgres Master-Replica (CAP: Consistency > Availability),
-#        nginx sebagai load balancer / reverse proxy
-# ============================================================
-
 services:
 
-  # ---------- Load Balancer (3.4 Communications Interfaces) ----------
   nginx:
     image: nginx:1.27-alpine
     container_name: tiketfast-nginx
@@ -26,7 +17,6 @@ services:
       - tiketfast-net
     restart: unless-stopped
 
-  # ---------- Application Nodes (multi-node, K8s-style di lokal) ----------
   app1:
     build: ./app
     container_name: tiketfast-app1
@@ -35,8 +25,8 @@ services:
       - REDIS_HOST=redis
       - PG_MASTER_HOST=postgres-master
       - PG_REPLICA_HOST=postgres-replica
-      - QUEUE_THRESHOLD=50000   # REQ-1: ambang batas 50.000 RPS (disimulasikan)
-      - LOCK_TTL_SECONDS=600    # REQ-3: TTL kunci kursi 600 detik
+      - QUEUE_THRESHOLD=50000
+      - LOCK_TTL_SECONDS=600
     depends_on:
       - redis
       - postgres-master
@@ -78,7 +68,6 @@ services:
       - tiketfast-net
     restart: unless-stopped
 
-  # ---------- Distributed Cache untuk Queue Token & Seat Locking ----------
   redis:
     image: redis:7.2-alpine
     container_name: tiketfast-redis
@@ -89,7 +78,6 @@ services:
       - tiketfast-net
     restart: unless-stopped
 
-  # ---------- Database Master (write, sumber kebenaran / Consistency) ----------
   postgres-master:
     image: postgres:16-alpine
     container_name: tiketfast-pg-master
@@ -108,7 +96,6 @@ services:
       - tiketfast-net
     restart: unless-stopped
 
-  # ---------- Database Replica (read-only, sinkronisasi streaming) ----------
   postgres-replica:
     image: postgres:16-alpine
     container_name: tiketfast-pg-replica
