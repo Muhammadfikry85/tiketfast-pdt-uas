@@ -1,0 +1,12 @@
+{
+  "name": "tiketfast-node",
+  "version": "2.0.0",
+  "description": "TiketFast - Platform Pemesanan Tiket Konser",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "pg": "^8.12.0",
+    "uuid": "^9.0.1"
+  }
+}
